@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Racing Team Scherzer - Bier & Spritz</title>
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js"></script>
+    <!-- Firebase v8 (funktioniert überall) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -38,7 +38,7 @@
             max-width: 400px;
             width: 90%;
         }
-        .login-box h2 { color: #ff6b35; margin-bottom: 20px; font-size: 1.5rem; }
+        .login-box h2 { color: #ff6b35; margin-bottom: 20px; }
         #passwordInput {
             width: 100%;
             padding: 15px;
@@ -60,7 +60,6 @@
             font-weight: bold;
             cursor: pointer;
         }
-        #loginBtn:hover { background: #ff8c42; }
         #loginError {
             color: #e74c3c;
             margin-top: 15px;
@@ -69,12 +68,8 @@
         }
         
         /* Main Content */
-        #mainContent {
-            display: none;
-        }
-        #mainContent.visible {
-            display: block;
-        }
+        #mainContent { display: none; }
+        #mainContent.visible { display: block; }
         
         /* Tabs */
         .tabs {
@@ -127,7 +122,6 @@
             font-weight: bold;
             cursor: pointer;
         }
-        .save-btn:hover { background: #ff8c42; }
         
         .team-card {
             background: #1a1a1a;
@@ -165,7 +159,6 @@
             border: 2px solid #e74c3c;
             margin-left: auto;
         }
-        .btn-delete:hover { background: #e74c3c; color: white; }
         
         .empty { text-align: center; color: #666; padding: 40px; font-style: italic; }
         
@@ -201,10 +194,11 @@
         
         .sync-status {
             text-align: center;
-            color: #2ecc71;
+            color: #666;
             font-size: 0.9rem;
             margin-bottom: 10px;
         }
+        .sync-status.online { color: #2ecc71; }
         .sync-status.offline { color: #e74c3c; }
         
         .notify {
@@ -240,7 +234,7 @@
         <h1>🏁 Racing Team Scherzer</h1>
         <p class="subtitle">🍺 Bier & Spritz Wettbewerb 🍹</p>
         
-        <div class="sync-status" id="syncStatus">🟢 Verbindung wird hergestellt...</div>
+        <div class="sync-status" id="syncStatus">Verbindung wird hergestellt...</div>
         
         <div class="tabs">
             <button class="tab active" onclick="showTab('input')">✏️ Eingabe</button>
@@ -256,9 +250,9 @@
             </div>
             
             <div class="box">
-                <h2>📋 Teams (alle Geräte synchron)</h2>
+                <h2>📋 Teams</h2>
                 <div id="teamsList">
-                    <div class="empty">Lade Daten...</div>
+                    <div class="empty">Lade...</div>
                 </div>
                 <button class="clear-btn" onclick="clearData()">🗑️ Alle Daten löschen</button>
             </div>
@@ -269,7 +263,7 @@
             <div class="box rank-box">
                 <h2>🏆 Live-Rangliste</h2>
                 <div id="rankList">
-                    <div class="empty">Lade Daten...</div>
+                    <div class="empty">Lade...</div>
                 </div>
             </div>
         </div>
@@ -278,174 +272,48 @@
     <div class="notify" id="notify"></div>
     
     <script>
-        // WICHTIG: Warte bis Firebase geladen ist
-        document.addEventListener('DOMContentLoaded', function() {
-            initApp();
+        // Firebase Config
+        var firebaseConfig = {
+            apiKey: "AIzaSyA8NWueq1ck88WFgwfYF2JD5OA0o9y3q9U",
+            authDomain: "bierwertung-8c213.firebaseapp.com",
+            databaseURL: "https://bierwertung-8c213-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "bierwertung-8c213",
+            storageBucket: "bierwertung-8c213.appspot.com",
+            messagingSenderId: "255142714294",
+            appId: "1:255142714294:web:264cebac1fe5cc6b863f17"
+        };
+        
+        // Initialize Firebase (v8 style)
+        firebase.initializeApp(firebaseConfig);
+        var database = firebase.database();
+        var teamsRef = database.ref('teams');
+        var entriesRef = database.ref('entries');
+        
+        // Status
+        var loggedIn = false;
+        var ADMIN_PASSWORD = 'bier2024';
+        
+        // Verbindungsstatus
+        database.ref('.info/connected').on('value', function(snap) {
+            var status = document.getElementById('syncStatus');
+            if (snap.val() === true) {
+                status.textContent = '🟢 Online - Alle Geräte synchron';
+                status.className = 'sync-status online';
+            } else {
+                status.textContent = '🔴 Offline';
+                status.className = 'sync-status offline';
+            }
         });
         
-        function initApp() {
-            // Prüfe ob Firebase geladen ist
-            if (typeof firebase === 'undefined') {
-                console.error('Firebase nicht geladen!');
-                document.getElementById('syncStatus').textContent = '🔴 Firebase nicht verfügbar';
-                document.getElementById('syncStatus').classList.add('offline');
-                return;
-            }
-            
-            console.log('Firebase ist geladen!');
-            
-            // Firebase Config
-            const firebaseConfig = {
-                apiKey: "AIzaSyA8NWueq1ck88WFgwfYF2JD5OA0o9y3q9U",
-                authDomain: "bierwertung-8c213.firebaseapp.com",
-                databaseURL: "https://bierwertung-8c213-default-rtdb.europe-west1.firebasedatabase.app",
-                projectId: "bierwertung-8c213",
-                storageBucket: "bierwertung-8c213.firebasestorage.app",
-                messagingSenderId: "255142714294",
-                appId: "1:255142714294:web:264cebac1fe5cc6b863f17"
-            };
-            
-            // Initialize
-            try {
-                firebase.initializeApp(firebaseConfig);
-                console.log('Firebase initialisiert!');
-            } catch (e) {
-                console.error('Firebase init Fehler:', e);
-            }
-            
-            const db = firebase.database();
-            const teamsRef = db.ref('teams');
-            const entriesRef = db.ref('entries');
-            
-            // Verbindungsstatus
-            db.ref('.info/connected').on('value', (snap) => {
-                const status = document.getElementById('syncStatus');
-                if (snap.val() === true) {
-                    status.textContent = '🟢 Mit Server verbunden - Alle Geräte synchron';
-                    status.classList.remove('offline');
-                } else {
-                    status.textContent = '🔴 Offline';
-                    status.classList.add('offline');
-                }
-            });
-            
-            // Teams laden
-            teamsRef.on('value', (snapshot) => {
-                const teams = snapshot.val() || {};
-                showTeams(teams);
-            });
-            
-            // Einträge laden
-            entriesRef.on('value', (snapshot) => {
-                const entries = snapshot.val() || {};
-                showRank(entries);
-            });
-            
-            // Globale Funktionen
-            window.saveTeam = function() {
-                if (!window.loggedIn) {
-                    showNotify('⚠️ Bitte einloggen!', true);
-                    return;
-                }
-                
-                const name = document.getElementById('newTeam').value.trim();
-                if (!name) {
-                    showNotify('⚠️ Namen eingeben!', true);
-                    return;
-                }
-                
-                teamsRef.once('value').then((snap) => {
-                    const teams = snap.val() || {};
-                    const exists = Object.values(teams).includes(name);
-                    
-                    if (exists) {
-                        showNotify('⚠️ Existiert schon!', true);
-                    } else {
-                        teamsRef.push(name);
-                        document.getElementById('newTeam').value = '';
-                        showNotify('✅ ' + name + ' gespeichert!');
-                    }
-                });
-            };
-            
-            document.getElementById('newTeam').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') window.saveTeam();
-            });
-            
-            window.add = function(teamKey, teamName, drink, amount) {
-                if (!window.loggedIn) {
-                    showNotify('⚠️ Bitte einloggen!', true);
-                    return;
-                }
-                
-                entriesRef.once('value').then((snap) => {
-                    const entries = snap.val() || {};
-                    let current = 0;
-                    
-                    Object.values(entries).forEach(e => {
-                        if (e.teamKey === teamKey && e.drink === drink) {
-                            current += e.menge;
-                        }
-                    });
-                    
-                    if (amount < 0 && current + amount < 0) {
-                        showNotify('⚠️ Nicht unter 0!', true);
-                        return;
-                    }
-                    
-                    entriesRef.push({
-                        teamKey: teamKey,
-                        teamName: teamName,
-                        drink: drink,
-                        menge: amount,
-                        time: Date.now()
-                    });
-                    
-                    const icon = drink === 'bier' ? '🍺' : '🍹';
-                    showNotify((amount > 0 ? '+' : '') + amount + icon + ' ' + teamName);
-                });
-            };
-            
-            window.delTeam = function(key, name) {
-                if (!window.loggedIn) {
-                    showNotify('⚠️ Bitte einloggen!', true);
-                    return;
-                }
-                
-                if (confirm('🗑️ ' + name + ' löschen?')) {
-                    teamsRef.child(key).remove();
-                    showNotify('✅ Gelöscht');
-                }
-            };
-            
-            window.clearData = function() {
-                if (!window.loggedIn) {
-                    showNotify('⚠️ Bitte einloggen!', true);
-                    return;
-                }
-                
-                if (confirm('🗑️ ALLES löschen?')) {
-                    teamsRef.remove();
-                    entriesRef.remove();
-                    showNotify('✅ Alles gelöscht');
-                }
-            };
-        }
-        
-        // PASSWORT & LOGIN
-        const ADMIN_PASSWORD = 'bier2024';
-        window.loggedIn = false;
-        
+        // Login
         function doLogin() {
-            const input = document.getElementById('passwordInput').value;
-            console.log('Login versucht');
-            
+            var input = document.getElementById('passwordInput').value;
             if (input === ADMIN_PASSWORD) {
-                window.loggedIn = true;
+                loggedIn = true;
                 document.getElementById('loginOverlay').style.display = 'none';
                 document.getElementById('mainContent').classList.add('visible');
                 document.getElementById('loginError').style.display = 'none';
-                showNotify('✅ Login erfolgreich!');
+                notify('✅ Login OK!');
             } else {
                 document.getElementById('loginError').style.display = 'block';
                 document.getElementById('passwordInput').value = '';
@@ -459,45 +327,155 @@
         
         // Tab wechseln
         function showTab(tab) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
             document.getElementById(tab).classList.add('active');
-            document.querySelectorAll('.tab').forEach(t => {
+            document.querySelectorAll('.tab').forEach(function(t) {
                 t.classList.toggle('active', t.getAttribute('onclick').includes(tab));
             });
         }
         
+        // Teams laden
+        teamsRef.on('value', function(snapshot) {
+            var teams = snapshot.val() || {};
+            showTeams(teams);
+        });
+        
+        // Einträge laden
+        entriesRef.on('value', function(snapshot) {
+            var entries = snapshot.val() || {};
+            showRank(entries);
+        });
+        
+        // Team speichern
+        function saveTeam() {
+            if (!loggedIn) {
+                notify('⚠️ Bitte einloggen!', true);
+                return;
+            }
+            
+            var name = document.getElementById('newTeam').value.trim();
+            if (!name) {
+                notify('⚠️ Namen eingeben!', true);
+                return;
+            }
+            
+            teamsRef.once('value').then(function(snap) {
+                var teams = snap.val() || {};
+                var exists = false;
+                Object.values(teams).forEach(function(t) {
+                    if (t === name) exists = true;
+                });
+                
+                if (exists) {
+                    notify('⚠️ Existiert schon!', true);
+                } else {
+                    teamsRef.push(name);
+                    document.getElementById('newTeam').value = '';
+                    notify('✅ ' + name + ' gespeichert!');
+                }
+            });
+        }
+        
+        document.getElementById('newTeam').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') saveTeam();
+        });
+        
+        // Eintrag hinzufügen
+        function add(teamKey, teamName, drink, amount) {
+            if (!loggedIn) {
+                notify('⚠️ Bitte einloggen!', true);
+                return;
+            }
+            
+            entriesRef.once('value').then(function(snap) {
+                var entries = snap.val() || {};
+                var current = 0;
+                
+                Object.values(entries).forEach(function(e) {
+                    if (e.teamKey === teamKey && e.drink === drink) {
+                        current += e.menge;
+                    }
+                });
+                
+                if (amount < 0 && current + amount < 0) {
+                    notify('⚠️ Nicht unter 0!', true);
+                    return;
+                }
+                
+                entriesRef.push({
+                    teamKey: teamKey,
+                    teamName: teamName,
+                    drink: drink,
+                    menge: amount,
+                    time: Date.now()
+                });
+                
+                var icon = drink === 'bier' ? '🍺' : '🍹';
+                notify((amount > 0 ? '+' : '') + amount + icon + ' ' + teamName);
+            });
+        }
+        
+        // Team löschen
+        function delTeam(key, name) {
+            if (!loggedIn) {
+                notify('⚠️ Bitte einloggen!', true);
+                return;
+            }
+            
+            if (confirm('🗑️ ' + name + ' löschen?')) {
+                teamsRef.child(key).remove();
+                notify('✅ Gelöscht');
+            }
+        }
+        
+        // Alles löschen
+        function clearData() {
+            if (!loggedIn) {
+                notify('⚠️ Bitte einloggen!', true);
+                return;
+            }
+            
+            if (confirm('🗑️ ALLES löschen?')) {
+                teamsRef.remove();
+                entriesRef.remove();
+                notify('✅ Alles gelöscht');
+            }
+        }
+        
         // Teams anzeigen
         function showTeams(teams) {
-            const list = document.getElementById('teamsList');
-            const arr = Object.entries(teams);
+            var list = document.getElementById('teamsList');
+            var arr = Object.entries(teams);
             
             if (arr.length === 0) {
                 list.innerHTML = '<div class="empty">Keine Teams</div>';
                 return;
             }
             
-            list.innerHTML = arr.map(([key, name]) => `
-                <div class="team-card">
-                    <div class="team-name">${name}</div>
-                    <div class="btn-row">
-                        <button class="btn btn-minus" onclick="add('${key}', '${name}', 'bier', -1)">-1 🍺</button>
-                        <button class="btn btn-plus" onclick="add('${key}', '${name}', 'bier', 1)">+1 🍺</button>
-                        <button class="btn btn-plus10" onclick="add('${key}', '${name}', 'bier', 10)">+10 🍺</button>
-                        <span style="color:#666">|</span>
-                        <button class="btn btn-minus" onclick="add('${key}', '${name}', 'spritz', -1)">-1 🍹</button>
-                        <button class="btn btn-plus" onclick="add('${key}', '${name}', 'spritz', 1)">+1 🍹</button>
-                        <button class="btn btn-plus10" onclick="add('${key}', '${name}', 'spritz', 10)">+10 🍹</button>
-                        <button class="btn btn-delete" onclick="delTeam('${key}', '${name}')">🗑️</button>
-                    </div>
-                </div>
-            `).join('');
+            list.innerHTML = arr.map(function(item) {
+                var key = item[0];
+                var name = item[1];
+                return '<div class="team-card">' +
+                    '<div class="team-name">' + name + '</div>' +
+                    '<div class="btn-row">' +
+                        '<button class="btn btn-minus" onclick="add(\'' + key + '\', \'' + name + '\', \'bier\', -1)">-1 🍺</button>' +
+                        '<button class="btn btn-plus" onclick="add(\'' + key + '\', \'' + name + '\', \'bier\', 1)">+1 🍺</button>' +
+                        '<button class="btn btn-plus10" onclick="add(\'' + key + '\', \'' + name + '\', \'bier\', 10)">+10 🍺</button>' +
+                        '<span style="color:#666">|</span>' +
+                        '<button class="btn btn-minus" onclick="add(\'' + key + '\', \'' + name + '\', \'spritz\', -1)">-1 🍹</button>' +
+                        '<button class="btn btn-plus" onclick="add(\'' + key + '\', \'' + name + '\', \'spritz\', 1)">+1 🍹</button>' +
+                        '<button class="btn btn-plus10" onclick="add(\'' + key + '\', \'' + name + '\', \'spritz\', 10)">+10 🍹</button>' +
+                        '<button class="btn btn-delete" onclick="delTeam(\'' + key + '\', \'' + name + '\')">🗑️</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
         }
         
         // Rangliste
         function showRank(entries) {
-            const stats = {};
+            var stats = {};
             
-            Object.values(entries).forEach(e => {
+            Object.values(entries).forEach(function(e) {
                 if (!stats[e.teamName]) {
                     stats[e.teamName] = { bier: 0, spritz: 0, total: 0 };
                 }
@@ -505,35 +483,37 @@
                 stats[e.teamName].total += e.menge;
             });
             
-            const sorted = Object.entries(stats)
-                .filter(([_, s]) => s.total > 0)
-                .sort((a, b) => b[1].total - a[1].total);
+            var sorted = Object.entries(stats)
+                .filter(function(item) { return item[1].total > 0; })
+                .sort(function(a, b) { return b[1].total - a[1].total; });
             
-            const list = document.getElementById('rankList');
+            var list = document.getElementById('rankList');
             if (sorted.length === 0) {
                 list.innerHTML = '<div class="empty">Keine Einträge</div>';
                 return;
             }
             
-            list.innerHTML = sorted.map(([team, s], i) => `
-                <div class="rank-item">
-                    <div class="rank-pos">#${i + 1}</div>
-                    <div class="rank-info">
-                        <div class="rank-team">${team}</div>
-                        <div class="rank-stats">🍺 ${s.bier} | 🍹 ${s.spritz}</div>
-                    </div>
-                    <div class="rank-total">${s.total}</div>
-                </div>
-            `).join('');
+            list.innerHTML = sorted.map(function(item, i) {
+                var team = item[0];
+                var s = item[1];
+                return '<div class="rank-item">' +
+                    '<div class="rank-pos">#' + (i + 1) + '</div>' +
+                    '<div class="rank-info">' +
+                        '<div class="rank-team">' + team + '</div>' +
+                        '<div class="rank-stats">🍺 ' + s.bier + ' | 🍹 ' + s.spritz + '</div>' +
+                    '</div>' +
+                    '<div class="rank-total">' + s.total + '</div>' +
+                '</div>';
+            }).join('');
         }
         
         // Notify
-        function showNotify(msg, error) {
-            const n = document.getElementById('notify');
+        function notify(msg, error) {
+            var n = document.getElementById('notify');
             n.textContent = msg;
             n.style.background = error ? '#e74c3c' : '#2ecc71';
-            n.style.display = 'block';
-            setTimeout(() => n.style.display = 'none', 2000);
+            n.classList.add('show');
+            setTimeout(function() { n.classList.remove('show'); }, 2000);
         }
     </script>
 </body>
