@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Racing Team Scherzer - Bier & Spritz</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -15,6 +17,50 @@
         }
         h1 { color: #ff6b35; text-align: center; margin-bottom: 10px; }
         .subtitle { text-align: center; color: #aaa; margin-bottom: 30px; }
+        
+        /* Login Overlay */
+        .login-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .login-box {
+            background: #2d2d2d;
+            border: 2px solid #ff6b35;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .login-box h2 { color: #ff6b35; margin-bottom: 20px; }
+        .login-box input {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1rem;
+            border: 2px solid #444;
+            border-radius: 10px;
+            background: #1a1a1a;
+            color: white;
+            margin-bottom: 15px;
+        }
+        .login-box button {
+            width: 100%;
+            padding: 15px;
+            background: #ff6b35;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .login-box button:hover { background: #ff8c42; }
+        .error { color: #e74c3c; margin-top: 10px; display: none; }
         
         /* Tabs */
         .tabs {
@@ -37,19 +83,16 @@
         .page { display: none; }
         .page.active { display: block; }
         
-        /* Team hinzufügen */
-        .add-box {
+        /* Content Boxes */
+        .box {
             background: #2d2d2d;
             border: 2px solid #ff6b35;
             border-radius: 15px;
             padding: 20px;
             margin-bottom: 20px;
         }
-        .add-box h2 {
-            color: #ff6b35;
-            margin-bottom: 15px;
-            font-size: 1.2rem;
-        }
+        .box h2 { color: #ff6b35; margin-bottom: 15px; font-size: 1.2rem; }
+        
         input[type="text"] {
             width: 100%;
             padding: 15px;
@@ -73,19 +116,7 @@
         }
         .save-btn:hover { background: #ff8c42; }
         
-        /* Team Liste */
-        .teams-box {
-            background: #2d2d2d;
-            border: 2px solid #444;
-            border-radius: 15px;
-            padding: 20px;
-        }
-        .teams-box h2 {
-            color: #ff6b35;
-            margin-bottom: 15px;
-            font-size: 1.2rem;
-        }
-        
+        /* Team Cards */
         .team-card {
             background: #1a1a1a;
             border: 2px solid #333;
@@ -94,20 +125,17 @@
             margin-bottom: 10px;
         }
         .team-card:hover { border-color: #ff6b35; }
-        
         .team-name {
             font-size: 1.3rem;
             font-weight: bold;
             margin-bottom: 10px;
         }
-        
         .btn-row {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
             align-items: center;
         }
-        
         .btn {
             padding: 8px 12px;
             border: none;
@@ -116,35 +144,18 @@
             font-weight: bold;
             font-size: 0.9rem;
         }
-        .btn-minus {
-            background: #e74c3c;
-            color: white;
-        }
-        .btn-plus {
-            background: #27ae60;
-            color: white;
-        }
-        .btn-plus10 {
-            background: #2ecc71;
-            color: white;
-        }
+        .btn-minus { background: #e74c3c; color: white; }
+        .btn-plus { background: #27ae60; color: white; }
+        .btn-plus10 { background: #2ecc71; color: white; }
         .btn-delete {
             background: #444;
             color: #e74c3c;
             border: 2px solid #e74c3c;
             margin-left: auto;
         }
-        .btn-delete:hover {
-            background: #e74c3c;
-            color: white;
-        }
+        .btn-delete:hover { background: #e74c3c; color: white; }
         
-        .empty {
-            text-align: center;
-            color: #666;
-            padding: 40px;
-            font-style: italic;
-        }
+        .empty { text-align: center; color: #666; padding: 40px; font-style: italic; }
         
         .clear-btn {
             width: 100%;
@@ -158,20 +169,9 @@
         }
         .clear-btn:hover { background: #e74c3c; }
         
-        /* Rangliste */
-        .rank-box {
-            background: #2d2d2d;
-            border: 2px solid #2ecc71;
-            border-radius: 15px;
-            padding: 20px;
-        }
-        .rank-box h2 {
-            color: #2ecc71;
-            margin-bottom: 15px;
-            font-size: 1.2rem;
-            text-align: center;
-        }
-        
+        /* Rank Box */
+        .rank-box { border-color: #2ecc71; }
+        .rank-box h2 { color: #2ecc71; text-align: center; }
         .rank-item {
             background: #1a1a1a;
             border: 2px solid #333;
@@ -182,35 +182,19 @@
             justify-content: space-between;
             align-items: center;
         }
+        .rank-pos { font-size: 1.8rem; font-weight: bold; color: #ff6b35; width: 50px; }
+        .rank-info { flex: 1; padding: 0 15px; }
+        .rank-team { font-size: 1.2rem; font-weight: bold; }
+        .rank-stats { color: #aaa; font-size: 0.9rem; margin-top: 5px; }
+        .rank-total { font-size: 1.8rem; font-weight: bold; color: #ff6b35; }
         
-        .rank-pos {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: #ff6b35;
-            width: 50px;
-        }
-        
-        .rank-info {
-            flex: 1;
-            padding: 0 15px;
-        }
-        
-        .rank-team {
-            font-size: 1.2rem;
-            font-weight: bold;
-        }
-        
-        .rank-stats {
-            color: #aaa;
+        .sync-status {
+            text-align: center;
+            color: #2ecc71;
             font-size: 0.9rem;
-            margin-top: 5px;
+            margin-bottom: 10px;
         }
-        
-        .rank-total {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: #ff6b35;
-        }
+        .sync-status.offline { color: #e74c3c; }
         
         .notify {
             position: fixed;
@@ -222,14 +206,28 @@
             border-radius: 8px;
             font-weight: bold;
             display: none;
+            z-index: 1001;
         }
         .notify.show { display: block; }
         .notify.error { background: #e74c3c; }
     </style>
 </head>
 <body>
+    <!-- LOGIN OVERLAY -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-box">
+            <h2>🔐 Admin Login</h2>
+            <p style="color: #aaa; margin-bottom: 20px;">Passwort für Eingabe</p>
+            <input type="password" id="passwordInput" placeholder="Passwort eingeben">
+            <button onclick="checkLogin()">Login</button>
+            <div id="loginError" class="error">❌ Falsches Passwort!</div>
+        </div>
+    </div>
+    
     <h1>🏁 Racing Team Scherzer</h1>
     <p class="subtitle">🍺 Bier & Spritz Wettbewerb 🍹</p>
+    
+    <div class="sync-status" id="syncStatus">🟢 Mit Server verbunden</div>
     
     <div class="tabs">
         <button class="tab active" onclick="showPage('input')">✏️ Eingabe</button>
@@ -238,16 +236,16 @@
     
     <!-- EINGABE SEITE -->
     <div id="input" class="page active">
-        <div class="add-box">
+        <div class="box">
             <h2>➕ Neues Team hinzufügen</h2>
             <input type="text" id="newTeam" placeholder="Teamname eingeben...">
             <button class="save-btn" onclick="saveTeam()">💾 SPEICHERN</button>
         </div>
         
-        <div class="teams-box">
-            <h2>📋 Teams</h2>
+        <div class="box">
+            <h2>📋 Teams (alle Geräte synchron)</h2>
             <div id="teamsList">
-                <div class="empty">Noch keine Teams vorhanden</div>
+                <div class="empty">Lade Daten...</div>
             </div>
             <button class="clear-btn" onclick="clearData()">🗑️ Alle Daten löschen</button>
         </div>
@@ -255,10 +253,10 @@
     
     <!-- RANGLISTE SEITE -->
     <div id="rank" class="page">
-        <div class="rank-box">
+        <div class="box rank-box">
             <h2>🏆 Live-Rangliste</h2>
             <div id="rankList">
-                <div class="empty">Noch keine Einträge</div>
+                <div class="empty">Lade Daten...</div>
             </div>
         </div>
     </div>
@@ -266,9 +264,42 @@
     <div class="notify" id="notify"></div>
     
     <script>
-        // Daten speichern
-        let teams = JSON.parse(localStorage.getItem('rsTeams')) || [];
-        let entries = JSON.parse(localStorage.getItem('rsEntries')) || [];
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyA8NWueq1ck88WFgwfYF2JD5OA0o9y3q9U",
+            authDomain: "bierwertung-8c213.firebaseapp.com",
+            databaseURL: "https://bierwertung-8c213-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "bierwertung-8c213",
+            storageBucket: "bierwertung-8c213.firebasestorage.app",
+            messagingSenderId: "255142714294",
+            appId: "1:255142714294:web:264cebac1fe5cc6b863f17"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        // Admin Passwort
+        const ADMIN_PASSWORD = 'bier2024';
+        let isLoggedIn = false;
+        
+        // Login check
+        function checkLogin() {
+            const input = document.getElementById('passwordInput').value;
+            if (input === ADMIN_PASSWORD) {
+                isLoggedIn = true;
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.getElementById('loginError').style.display = 'none';
+                notify('✅ Login erfolgreich!');
+            } else {
+                document.getElementById('loginError').style.display = 'block';
+                document.getElementById('passwordInput').value = '';
+            }
+        }
+        
+        document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') checkLogin();
+        });
         
         // Seite wechseln
         function showPage(page) {
@@ -281,112 +312,169 @@
                     t.classList.remove('active');
                 }
             });
-            if (page === 'rank') updateRank();
-            if (page === 'input') showTeams();
         }
+        
+        // Verbindungsstatus
+        const connectedRef = database.ref('.info/connected');
+        connectedRef.on('value', (snap) => {
+            const status = document.getElementById('syncStatus');
+            if (snap.val() === true) {
+                status.textContent = '🟢 Mit Server verbunden - Alle Geräte synchron';
+                status.classList.remove('offline');
+            } else {
+                status.textContent = '🔴 Offline - Verbindung wird wiederhergestellt...';
+                status.classList.add('offline');
+            }
+        });
+        
+        // Teams aus Datenbank laden
+        const teamsRef = database.ref('teams');
+        const entriesRef = database.ref('entries');
+        
+        teamsRef.on('value', (snapshot) => {
+            const teams = snapshot.val() || {};
+            showTeams(teams);
+        });
+        
+        entriesRef.on('value', (snapshot) => {
+            const entries = snapshot.val() || {};
+            updateRank(entries);
+        });
         
         // Team speichern
         function saveTeam() {
+            if (!isLoggedIn) {
+                notify('⚠️ Bitte erst einloggen!', true);
+                return;
+            }
+            
             const name = document.getElementById('newTeam').value.trim();
             if (!name) {
                 notify('⚠️ Bitte Namen eingeben!', true);
                 return;
             }
-            if (teams.includes(name)) {
-                notify('⚠️ Team existiert bereits!', true);
-                return;
-            }
-            teams.push(name);
-            localStorage.setItem('rsTeams', JSON.stringify(teams));
-            document.getElementById('newTeam').value = '';
-            showTeams();
-            notify('✅ Team "' + name + '" gespeichert!');
+            
+            // Check if exists
+            teamsRef.once('value').then((snapshot) => {
+                const teams = snapshot.val() || {};
+                const exists = Object.values(teams).includes(name);
+                
+                if (exists) {
+                    notify('⚠️ Team existiert bereits!', true);
+                } else {
+                    const newTeamRef = teamsRef.push();
+                    newTeamRef.set(name);
+                    document.getElementById('newTeam').value = '';
+                    notify('✅ Team "' + name + '" gespeichert!');
+                }
+            });
         }
         
-        // Enter-Taste
         document.getElementById('newTeam').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') saveTeam();
         });
         
         // Teams anzeigen
-        function showTeams() {
+        function showTeams(teams) {
             const list = document.getElementById('teamsList');
-            if (teams.length === 0) {
+            const teamsArray = Object.entries(teams);
+            
+            if (teamsArray.length === 0) {
                 list.innerHTML = '<div class="empty">Noch keine Teams vorhanden</div>';
                 return;
             }
             
-            list.innerHTML = teams.map(team => `
+            list.innerHTML = teamsArray.map(([key, name]) => `
                 <div class="team-card">
-                    <div class="team-name">${team}</div>
+                    <div class="team-name">${name}</div>
                     <div class="btn-row">
-                        <button class="btn btn-minus" onclick="add('${team}', 'bier', -1)">-1 🍺</button>
-                        <button class="btn btn-plus" onclick="add('${team}', 'bier', 1)">+1 🍺</button>
-                        <button class="btn btn-plus10" onclick="add('${team}', 'bier', 10)">+10 🍺</button>
+                        <button class="btn btn-minus" onclick="addEntry('${key}', '${name}', 'bier', -1)">-1 🍺</button>
+                        <button class="btn btn-plus" onclick="addEntry('${key}', '${name}', 'bier', 1)">+1 🍺</button>
+                        <button class="btn btn-plus10" onclick="addEntry('${key}', '${name}', 'bier', 10)">+10 🍺</button>
                         <span style="color:#666">|</span>
-                        <button class="btn btn-minus" onclick="add('${team}', 'spritz', -1)">-1 🍹</button>
-                        <button class="btn btn-plus" onclick="add('${team}', 'spritz', 1)">+1 🍹</button>
-                        <button class="btn btn-plus10" onclick="add('${team}', 'spritz', 10)">+10 🍹</button>
-                        <button class="btn btn-delete" onclick="removeTeam('${team}')">🗑️</button>
+                        <button class="btn btn-minus" onclick="addEntry('${key}', '${name}', 'spritz', -1)">-1 🍹</button>
+                        <button class="btn btn-plus" onclick="addEntry('${key}', '${name}', 'spritz', 1)">+1 🍹</button>
+                        <button class="btn btn-plus10" onclick="addEntry('${key}', '${name}', 'spritz', 10)">+10 🍹</button>
+                        <button class="btn btn-delete" onclick="deleteTeam('${key}', '${name}')">🗑️</button>
                     </div>
                 </div>
             `).join('');
         }
         
         // Eintrag hinzufügen
-        function add(team, drink, amount) {
-            // Check minus
-            if (amount < 0) {
-                const current = entries
-                    .filter(e => e.team === team && e.drink === drink)
-                    .reduce((sum, e) => sum + e.menge, 0);
-                if (current + amount < 0) {
+        function addEntry(teamKey, teamName, drink, amount) {
+            if (!isLoggedIn) {
+                notify('⚠️ Bitte erst einloggen!', true);
+                return;
+            }
+            
+            // Check current count
+            entriesRef.once('value').then((snapshot) => {
+                const entries = snapshot.val() || {};
+                let current = 0;
+                
+                Object.values(entries).forEach(e => {
+                    if (e.teamKey === teamKey && e.drink === drink) {
+                        current += e.menge;
+                    }
+                });
+                
+                if (amount < 0 && current + amount < 0) {
                     notify('⚠️ Kann nicht unter 0!', true);
                     return;
                 }
-            }
-            
-            entries.push({
-                team: team,
-                drink: drink,
-                menge: amount,
-                time: Date.now()
+                
+                const newEntryRef = entriesRef.push();
+                newEntryRef.set({
+                    teamKey: teamKey,
+                    teamName: teamName,
+                    drink: drink,
+                    menge: amount,
+                    timestamp: Date.now()
+                });
+                
+                const icon = drink === 'bier' ? '🍺' : '🍹';
+                notify((amount > 0 ? '+' : '') + amount + icon + ' ' + teamName);
             });
-            localStorage.setItem('rsEntries', JSON.stringify(entries));
-            
-            const icon = drink === 'bier' ? '🍺' : '🍹';
-            notify((amount > 0 ? '+' : '') + amount + icon + ' ' + team);
         }
         
         // Team löschen
-        function removeTeam(team) {
-            if (confirm('🗑️ Team "' + team + '" löschen?')) {
-                teams = teams.filter(t => t !== team);
-                localStorage.setItem('rsTeams', JSON.stringify(teams));
-                showTeams();
+        function deleteTeam(key, name) {
+            if (!isLoggedIn) {
+                notify('⚠️ Bitte erst einloggen!', true);
+                return;
+            }
+            
+            if (confirm('🗑️ Team "' + name + '" löschen?')) {
+                teamsRef.child(key).remove();
                 notify('✅ Team gelöscht');
             }
         }
         
         // Alle Daten löschen
         function clearData() {
+            if (!isLoggedIn) {
+                notify('⚠️ Bitte erst einloggen!', true);
+                return;
+            }
+            
             if (confirm('🗑️ ALLE Daten löschen?\n\nAlle Teams und Einträge werden gelöscht!')) {
-                teams = [];
-                entries = [];
-                localStorage.removeItem('rsTeams');
-                localStorage.removeItem('rsEntries');
-                showTeams();
+                teamsRef.remove();
+                entriesRef.remove();
                 notify('✅ Alle Daten gelöscht');
             }
         }
         
         // Rangliste aktualisieren
-        function updateRank() {
+        function updateRank(entries) {
             const stats = {};
-            entries.forEach(e => {
-                if (!stats[e.team]) stats[e.team] = { bier: 0, spritz: 0, total: 0 };
-                stats[e.team][e.drink] += e.menge;
-                stats[e.team].total += e.menge;
+            
+            Object.values(entries).forEach(e => {
+                if (!stats[e.teamName]) {
+                    stats[e.teamName] = { bier: 0, spritz: 0, total: 0 };
+                }
+                stats[e.teamName][e.drink] += e.menge;
+                stats[e.teamName].total += e.menge;
             });
             
             const sorted = Object.entries(stats)
@@ -418,9 +506,6 @@
             n.className = error ? 'notify error show' : 'notify show';
             setTimeout(() => n.classList.remove('show'), 2000);
         }
-        
-        // Start
-        showTeams();
     </script>
 </body>
 </html>
