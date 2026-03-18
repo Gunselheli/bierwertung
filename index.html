@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Racing Team Scherzer - Bier & Spritz</title>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -229,7 +230,7 @@
             <h2>🔐 Admin Login</h2>
             <p style="color: #aaa; margin-bottom: 20px;">Passwort für Eingabe</p>
             <input type="password" id="passwordInput" placeholder="Passwort eingeben" autocomplete="off">
-            <button id="loginBtn" onclick="doLogin()">Login</button>
+            <button id="loginBtn">Login</button>
             <div id="loginError">❌ Falsches Passwort!</div>
         </div>
     </div>
@@ -239,7 +240,7 @@
         <h1>🏁 Racing Team Scherzer</h1>
         <p class="subtitle">🍺 Bier & Spritz Wettbewerb 🍹</p>
         
-        <div class="sync-status" id="syncStatus">🟢 Mit Server verbunden</div>
+        <div class="sync-status" id="syncStatus">🟢 Verbindung wird hergestellt...</div>
         
         <div class="tabs">
             <button class="tab active" onclick="showTab('input')">✏️ Eingabe</button>
@@ -277,51 +278,183 @@
     <div class="notify" id="notify"></div>
     
     <script>
-        // PASSWORT
+        // WICHTIG: Warte bis Firebase geladen ist
+        document.addEventListener('DOMContentLoaded', function() {
+            initApp();
+        });
+        
+        function initApp() {
+            // Prüfe ob Firebase geladen ist
+            if (typeof firebase === 'undefined') {
+                console.error('Firebase nicht geladen!');
+                document.getElementById('syncStatus').textContent = '🔴 Firebase nicht verfügbar';
+                document.getElementById('syncStatus').classList.add('offline');
+                return;
+            }
+            
+            console.log('Firebase ist geladen!');
+            
+            // Firebase Config
+            const firebaseConfig = {
+                apiKey: "AIzaSyA8NWueq1ck88WFgwfYF2JD5OA0o9y3q9U",
+                authDomain: "bierwertung-8c213.firebaseapp.com",
+                databaseURL: "https://bierwertung-8c213-default-rtdb.europe-west1.firebasedatabase.app",
+                projectId: "bierwertung-8c213",
+                storageBucket: "bierwertung-8c213.firebasestorage.app",
+                messagingSenderId: "255142714294",
+                appId: "1:255142714294:web:264cebac1fe5cc6b863f17"
+            };
+            
+            // Initialize
+            try {
+                firebase.initializeApp(firebaseConfig);
+                console.log('Firebase initialisiert!');
+            } catch (e) {
+                console.error('Firebase init Fehler:', e);
+            }
+            
+            const db = firebase.database();
+            const teamsRef = db.ref('teams');
+            const entriesRef = db.ref('entries');
+            
+            // Verbindungsstatus
+            db.ref('.info/connected').on('value', (snap) => {
+                const status = document.getElementById('syncStatus');
+                if (snap.val() === true) {
+                    status.textContent = '🟢 Mit Server verbunden - Alle Geräte synchron';
+                    status.classList.remove('offline');
+                } else {
+                    status.textContent = '🔴 Offline';
+                    status.classList.add('offline');
+                }
+            });
+            
+            // Teams laden
+            teamsRef.on('value', (snapshot) => {
+                const teams = snapshot.val() || {};
+                showTeams(teams);
+            });
+            
+            // Einträge laden
+            entriesRef.on('value', (snapshot) => {
+                const entries = snapshot.val() || {};
+                showRank(entries);
+            });
+            
+            // Globale Funktionen
+            window.saveTeam = function() {
+                if (!window.loggedIn) {
+                    showNotify('⚠️ Bitte einloggen!', true);
+                    return;
+                }
+                
+                const name = document.getElementById('newTeam').value.trim();
+                if (!name) {
+                    showNotify('⚠️ Namen eingeben!', true);
+                    return;
+                }
+                
+                teamsRef.once('value').then((snap) => {
+                    const teams = snap.val() || {};
+                    const exists = Object.values(teams).includes(name);
+                    
+                    if (exists) {
+                        showNotify('⚠️ Existiert schon!', true);
+                    } else {
+                        teamsRef.push(name);
+                        document.getElementById('newTeam').value = '';
+                        showNotify('✅ ' + name + ' gespeichert!');
+                    }
+                });
+            };
+            
+            document.getElementById('newTeam').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') window.saveTeam();
+            });
+            
+            window.add = function(teamKey, teamName, drink, amount) {
+                if (!window.loggedIn) {
+                    showNotify('⚠️ Bitte einloggen!', true);
+                    return;
+                }
+                
+                entriesRef.once('value').then((snap) => {
+                    const entries = snap.val() || {};
+                    let current = 0;
+                    
+                    Object.values(entries).forEach(e => {
+                        if (e.teamKey === teamKey && e.drink === drink) {
+                            current += e.menge;
+                        }
+                    });
+                    
+                    if (amount < 0 && current + amount < 0) {
+                        showNotify('⚠️ Nicht unter 0!', true);
+                        return;
+                    }
+                    
+                    entriesRef.push({
+                        teamKey: teamKey,
+                        teamName: teamName,
+                        drink: drink,
+                        menge: amount,
+                        time: Date.now()
+                    });
+                    
+                    const icon = drink === 'bier' ? '🍺' : '🍹';
+                    showNotify((amount > 0 ? '+' : '') + amount + icon + ' ' + teamName);
+                });
+            };
+            
+            window.delTeam = function(key, name) {
+                if (!window.loggedIn) {
+                    showNotify('⚠️ Bitte einloggen!', true);
+                    return;
+                }
+                
+                if (confirm('🗑️ ' + name + ' löschen?')) {
+                    teamsRef.child(key).remove();
+                    showNotify('✅ Gelöscht');
+                }
+            };
+            
+            window.clearData = function() {
+                if (!window.loggedIn) {
+                    showNotify('⚠️ Bitte einloggen!', true);
+                    return;
+                }
+                
+                if (confirm('🗑️ ALLES löschen?')) {
+                    teamsRef.remove();
+                    entriesRef.remove();
+                    showNotify('✅ Alles gelöscht');
+                }
+            };
+        }
+        
+        // PASSWORT & LOGIN
         const ADMIN_PASSWORD = 'bier2024';
-        let loggedIn = false;
+        window.loggedIn = false;
         
-        // Firebase Config
-        const firebaseConfig = {
-            apiKey: "AIzaSyA8NWueq1ck88WFgwfYF2JD5OA0o9y3q9U",
-            authDomain: "bierwertung-8c213.firebaseapp.com",
-            databaseURL: "https://bierwertung-8c213-default-rtdb.europe-west1.firebasedatabase.app",
-            projectId: "bierwertung-8c213",
-            storageBucket: "bierwertung-8c213.firebasestorage.app",
-            messagingSenderId: "255142714294",
-            appId: "1:255142714294:web:264cebac1fe5cc6b863f17"
-        };
-        
-        // Initialize
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-        const teamsRef = db.ref('teams');
-        const entriesRef = db.ref('entries');
-        
-        // LOGIN Funktion
         function doLogin() {
             const input = document.getElementById('passwordInput').value;
-            console.log('Login versucht:', input);
+            console.log('Login versucht');
             
             if (input === ADMIN_PASSWORD) {
-                console.log('Login OK!');
-                loggedIn = true;
+                window.loggedIn = true;
                 document.getElementById('loginOverlay').style.display = 'none';
                 document.getElementById('mainContent').classList.add('visible');
                 document.getElementById('loginError').style.display = 'none';
                 showNotify('✅ Login erfolgreich!');
             } else {
-                console.log('Login falsch!');
                 document.getElementById('loginError').style.display = 'block';
                 document.getElementById('passwordInput').value = '';
             }
         }
         
-        // Enter Taste im Passwortfeld
+        document.getElementById('loginBtn').addEventListener('click', doLogin);
         document.getElementById('passwordInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                doLogin();
-            }
+            if (e.key === 'Enter') doLogin();
         });
         
         // Tab wechseln
@@ -332,61 +465,6 @@
                 t.classList.toggle('active', t.getAttribute('onclick').includes(tab));
             });
         }
-        
-        // Verbindungsstatus
-        db.ref('.info/connected').on('value', (snap) => {
-            const status = document.getElementById('syncStatus');
-            if (snap.val() === true) {
-                status.textContent = '🟢 Mit Server verbunden - Alle Geräte synchron';
-                status.classList.remove('offline');
-            } else {
-                status.textContent = '🔴 Offline';
-                status.classList.add('offline');
-            }
-        });
-        
-        // Teams laden
-        teamsRef.on('value', (snapshot) => {
-            const teams = snapshot.val() || {};
-            showTeams(teams);
-        });
-        
-        // Einträge laden
-        entriesRef.on('value', (snapshot) => {
-            const entries = snapshot.val() || {};
-            showRank(entries);
-        });
-        
-        // Team speichern
-        function saveTeam() {
-            if (!loggedIn) {
-                showNotify('⚠️ Bitte einloggen!', true);
-                return;
-            }
-            
-            const name = document.getElementById('newTeam').value.trim();
-            if (!name) {
-                showNotify('⚠️ Namen eingeben!', true);
-                return;
-            }
-            
-            teamsRef.once('value').then((snap) => {
-                const teams = snap.val() || {};
-                const exists = Object.values(teams).includes(name);
-                
-                if (exists) {
-                    showNotify('⚠️ Existiert schon!', true);
-                } else {
-                    teamsRef.push(name);
-                    document.getElementById('newTeam').value = '';
-                    showNotify('✅ ' + name + ' gespeichert!');
-                }
-            });
-        }
-        
-        document.getElementById('newTeam').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') saveTeam();
-        });
         
         // Teams anzeigen
         function showTeams(teams) {
@@ -413,68 +491,6 @@
                     </div>
                 </div>
             `).join('');
-        }
-        
-        // Eintrag hinzufügen
-        function add(teamKey, teamName, drink, amount) {
-            if (!loggedIn) {
-                showNotify('⚠️ Bitte einloggen!', true);
-                return;
-            }
-            
-            entriesRef.once('value').then((snap) => {
-                const entries = snap.val() || {};
-                let current = 0;
-                
-                Object.values(entries).forEach(e => {
-                    if (e.teamKey === teamKey && e.drink === drink) {
-                        current += e.menge;
-                    }
-                });
-                
-                if (amount < 0 && current + amount < 0) {
-                    showNotify('⚠️ Nicht unter 0!', true);
-                    return;
-                }
-                
-                entriesRef.push({
-                    teamKey: teamKey,
-                    teamName: teamName,
-                    drink: drink,
-                    menge: amount,
-                    time: Date.now()
-                });
-                
-                const icon = drink === 'bier' ? '🍺' : '🍹';
-                showNotify((amount > 0 ? '+' : '') + amount + icon + ' ' + teamName);
-            });
-        }
-        
-        // Team löschen
-        function delTeam(key, name) {
-            if (!loggedIn) {
-                showNotify('⚠️ Bitte einloggen!', true);
-                return;
-            }
-            
-            if (confirm('🗑️ ' + name + ' löschen?')) {
-                teamsRef.child(key).remove();
-                showNotify('✅ Gelöscht');
-            }
-        }
-        
-        // Alles löschen
-        function clearData() {
-            if (!loggedIn) {
-                showNotify('⚠️ Bitte einloggen!', true);
-                return;
-            }
-            
-            if (confirm('🗑️ ALLES löschen?')) {
-                teamsRef.remove();
-                entriesRef.remove();
-                showNotify('✅ Alles gelöscht');
-            }
         }
         
         // Rangliste
